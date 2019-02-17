@@ -4,7 +4,7 @@ class flisteicons {
 	getName() { return "F-list eicons"; }
 	getShortName() { return "flei"; }
 	getDescription() { return "Inserts F-list eicons into messages where applicable"; }
-	getVersion() { return "0.2.0"; }
+	getVersion() { return "0.2.1"; }
 	getAuthor() { return "Kemono-Kay"; }
 	
 	load() {}
@@ -14,7 +14,7 @@ class flisteicons {
 	start() {}
 	
 	observer( { addedNodes, removedNodes } ) {
-		
+		//console.log( addedNodes );
 		/*
 		 * Looks for text nodes to insert icons into, within the given element's child nodes.
 		 */
@@ -41,7 +41,6 @@ class flisteicons {
 		 */
 		var replaceMatches = function( element ) {
 			let jumboable = true;
-			let imgs = [];
 			
 			// Formatting specific to search results. The text nodes are broken up and highlighted; this fuses the text nodes together.
 			for ( let node of [ ...element.childNodes ] ) {
@@ -90,7 +89,6 @@ class flisteicons {
 					img.setAttribute( 'src', 'https://static.f-list.net/images/eicon/' + match[ 1 ].toLowerCase() + '.gif' );
 					img.setAttribute( 'class', 'emoji da-emoji' );
 					icons.push( img );
-					imgs.push( img );
 					
 					var timeoutId = null;
 					img.addEventListener( 'mouseover', () => { timeoutId = setTimeout( displayTooltip, 1000, img ); } );
@@ -113,7 +111,7 @@ class flisteicons {
 			
 			// If no visible text accompanies the eicon, make it jumboable (larger size)
 			if ( jumboable ) {
-				for ( let img of imgs ) {
+				for ( let img of [ ...element.getElementsByTagName( 'img' ) ] ) {
 					img.classList.add( 'jumboable', 'da-jumboable' );
 				}
 			}
@@ -129,7 +127,7 @@ class flisteicons {
 			let bottom = window.screen.height - rect.top - tooltip.clientHeight;
 			let left = rect.left / 2 + rect.right / 2 - tooltip.clientWidth / 2;
 			
-			tooltip.setAttribute( 'style', 'bottom: ' + bottom + 'px; left: ' + left + 'px;' );
+			tooltip.setAttribute( 'style', `bottom: ${bottom}px; left: ${left}px;` );
 		}
 		
 		var removeTooltip = function() {
@@ -146,12 +144,20 @@ class flisteicons {
 					insertIcons( el );
 				} else if (	el.classList.contains( 'da-container' )	) {
 					// Upon edit (characterData mutation) retry inserting icons.
+					insertIcons( el );
 					var callback = function( mutationsList, observer ) {
 						insertIcons( el );
 						observer.disconnect();
 					};
 					var observer = new MutationObserver( callback );
 					observer.observe( el, { attributes: false, childList: false, subtree: true, characterData: true } );
+					
+					/* 
+					 * The mutation doesn't trigger if the edit is cancelled, but the eicon is removed when this happens.
+					 * If I insert the eicon straight away, though, it overwrites any edits that are made.
+					 * Therefore, this is triggered with a slight delay, to give the mutation time to occur first.
+					 */
+					setTimeout( () =>{ insertIcons( el ); }, 250 );
 				} else if ( 
 					el.classList.contains( 'da-messagesWrapper' ) || 
 					el.classList.contains( 'da-modal' ) ||
