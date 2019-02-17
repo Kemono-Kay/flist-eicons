@@ -4,7 +4,7 @@ class flisteicons {
 	getName() { return "F-list eicons"; }
 	getShortName() { return "flei"; }
 	getDescription() { return "Inserts F-list eicons into messages where applicable"; }
-	getVersion() { return "0.2.1"; }
+	getVersion() { return "0.2.2"; }
 	getAuthor() { return "Kemono-Kay"; }
 	
 	load() {}
@@ -14,7 +14,6 @@ class flisteicons {
 	start() {}
 	
 	observer( { addedNodes, removedNodes } ) {
-		//console.log( addedNodes );
 		/*
 		 * Looks for text nodes to insert icons into, within the given element's child nodes.
 		 */
@@ -144,7 +143,6 @@ class flisteicons {
 					insertIcons( el );
 				} else if (	el.classList.contains( 'da-container' )	) {
 					// Upon edit (characterData mutation) retry inserting icons.
-					insertIcons( el );
 					var callback = function( mutationsList, observer ) {
 						insertIcons( el );
 						observer.disconnect();
