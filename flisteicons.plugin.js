@@ -4,7 +4,7 @@ class flisteicons {
 	getName() { return "F-list eicons"; }
 	getShortName() { return "flei"; }
 	getDescription() { return "Inserts F-list eicons into messages where applicable"; }
-	getVersion() { return "0.1.0"; }
+	getVersion() { return "0.2.0"; }
 	getAuthor() { return "Kemono-Kay"; }
 	
 	load() {}
@@ -12,11 +12,8 @@ class flisteicons {
 	initialize() {}
 	stop() {}
 	start() {}
-	constructor() {}
 	
 	observer( { addedNodes, removedNodes } ) {
-		
-		console.log(addedNodes);
 		
 		/*
 		 * Looks for text nodes to insert icons into, within the given element's child nodes.
@@ -48,7 +45,7 @@ class flisteicons {
 			
 			// Formatting specific to search results. The text nodes are broken up and highlighted; this fuses the text nodes together.
 			for ( let node of [ ...element.childNodes ] ) {
-				if ( node.nodeType == document.ELEMENT_NODE && node.tagName.toLowerCase() == 'span' && !el.firstElementChild.className ) {
+				if ( node.nodeType == document.ELEMENT_NODE && node.tagName.toLowerCase() == 'span' && !node.className ) {
 					let text = document.createTextNode( node.textContent )
 					element.insertBefore( text, node );
 					node.remove();
@@ -87,13 +84,17 @@ class flisteicons {
 					text = text.substring( match.index + match[ 0 ].length );
 					
 					// Turn in-text eicon into an actual image
-					let img = document.createElement( 'img' );
+					var img = document.createElement( 'img' );
 					img.setAttribute( 'alt', match[ 0 ] );
 					img.setAttribute( 'draggable', false );
 					img.setAttribute( 'src', 'https://static.f-list.net/images/eicon/' + match[ 1 ].toLowerCase() + '.gif' );
 					img.setAttribute( 'class', 'emoji da-emoji' );
 					icons.push( img );
 					imgs.push( img );
+					
+					var timeoutId = null;
+					img.addEventListener( 'mouseover', () => { timeoutId = setTimeout( displayTooltip, 1000, img ); } );
+					img.addEventListener( 'mouseout', () => { clearTimeout( timeoutId ); removeTooltip(); } );
 				}
 				
 				splitText.push( text );
@@ -116,6 +117,23 @@ class flisteicons {
 					img.classList.add( 'jumboable', 'da-jumboable' );
 				}
 			}
+		}
+		
+		var displayTooltip = function ( element ) {
+			let rect = element.getBoundingClientRect();
+			let tooltip = document.createElement( 'div' );
+			tooltip.setAttribute( 'class', 'tooltip-1OS-Ti da-tooltip top-1pTh1F da-top black-2bmmnj da-black' );
+			tooltip.appendChild( document.createTextNode( element.getAttribute( 'alt' ) ) );
+			document.getElementsByClassName('da-tooltips')[ 0 ].appendChild( tooltip );
+			
+			let bottom = window.screen.height - rect.top - tooltip.clientHeight;
+			let left = rect.left / 2 + rect.right / 2 - tooltip.clientWidth / 2;
+			
+			tooltip.setAttribute( 'style', 'bottom: ' + bottom + 'px; left: ' + left + 'px;' );
+		}
+		
+		var removeTooltip = function() {
+			document.getElementsByClassName('da-tooltips')[ 0 ].innerHTML = '';
 		}
 
 		/*
