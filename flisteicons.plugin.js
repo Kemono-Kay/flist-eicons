@@ -1,5 +1,15 @@
 //META{"name":"flisteicons"}*//
 
+/*
+
+TODO:
+Zoom in on eicons
+Allow clearing individual eicons from history
+Allow insertion of eicons in history as you're typing (like is the case for emoji)
+
+*/
+
+const request = require( 'request' );
 const pluginName = 'flisteicons';
 const eiconPattern = /:[f]!([ \w-]+?):/i;
 var currentText = '';
@@ -8,11 +18,13 @@ class flisteicons {
 	getName() { return "F-list eicons"; }
 	getShortName() { return "flei"; }
 	getDescription() { return "Inserts F-list eicons into messages where applicable"; }
-	getVersion() { return "0.3.1"; }
+	getVersion() { return "0.3.2"; }
 	getAuthor() { return "Kemono-Kay"; }
 	getSettingsPanel() { return buildSettingsPage(); }
 	stop() {}
-	start() {}
+	start() {
+		loadDefaultEicon();
+	}
 	onSwitch() {
 		// Find the main textArea and attach handlers for managing eicon history.
 		attachTextAreaHandlers( document );
@@ -29,6 +41,39 @@ class flisteicons {
 	}
 }
 
+/*
+ * Checks whether an eicon exists by file contents
+ */
+function eiconExists( body ) {
+	let standard = readData( 'default-eicon' );
+	if ( 'undefined' === typeof standard )
+		return true;
+	return standard !== body;
+}
+
+/*
+ * Gets the data of the eicon with the given name.
+ */
+function getEiconData( name, callback ) {
+	request( getEiconUrl( name ), ( error, response, body ) => {
+		setTimeout( callback, 0, body );
+	} );
+}
+
+/*
+ * Gets the data of the default eicon.
+ */
+function loadDefaultEicon() {
+	if ( 'undefined' === typeof readData( 'default-eicon' ) ) {
+		request( getEiconUrl(), ( error, response, body ) => {
+			if ( 'undefined' !== typeof body ) {
+				writeData( 'default-eicon', body );
+			} else {
+				setTimeout( loadDefaultEicon(), 10000 );
+			}
+		} );
+	}
+}
 
 /*
  * Writes to the plugin data.
@@ -65,6 +110,7 @@ function insertIcons( el ) {
 		// Call recursively
 		insertIcons( element );
 		
+		// If this is a text node, try matching tags.
 		if ( element.nodeType == document.TEXT_NODE )
 			replaceOnThis = true;
 	}
@@ -77,14 +123,22 @@ function insertIcons( el ) {
  * Adds an eicon to the history list.
  */
 function addToHistory( eicon ) {
-	let history = readData( 'history', [] );
-	let maxLength = readData( 'maxhistory', 50 );
-	let index = history.indexOf( eicon );
-	if ( index >= 0 )
-		history.splice( index, 1 );
-	history.unshift( eicon );
-	history.splice( maxLength );
-	writeData( 'history', history );
+	var history = readData( 'history', [] );
+	var maxLength = readData( 'maxhistory', 50 );
+	var index = history.indexOf( eicon );
+	if ( index >= 0 ) {
+		history.unshift( history.splice( index, 1 )[ 0 ] );
+		history.splice( maxLength );
+		writeData( 'history', history );
+	} else {
+		getEiconData( eicon, ( data ) => {
+			if ( eiconExists( data ) ) {
+				history.unshift( eicon );
+				history.splice( maxLength );
+				writeData( 'history', history );
+			}
+		} );
+	}
 }
 
 /*
