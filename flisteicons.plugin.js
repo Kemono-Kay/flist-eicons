@@ -45,6 +45,9 @@ class flisteicons {
 	get whitespace() { return /^\s*$/; }
 	get changelog() {
 		return {
+			'1.0.2': [
+				`No extra custom css is needed to style eicons.`,
+			],
 			'1.0.1': [
 				`A critical bug has been fixed where the plugin cannot start.`,
 			],
@@ -70,18 +73,16 @@ class flisteicons {
 				to { width: 100px; height: 100px; }
 			}
 			
-			.eicon-wrapper {
+			.emoji.eicon-wrapper {
+				margin: 0;
 				position: relative;
 				display: inline-flex;
 				object-fit: contain;
-				margin-bottom: -.3em;
-				vertical-align: top;
 				height: 1.45em;
 				width: 1.45em;
 			}
 			
-			.eicon-wrapper.jumboable {
-				margin-top: .2em;
+			.emoji.eicon-wrapper.jumboable {
 				height: 2rem;
 				width: 2rem;
 			}
@@ -351,10 +352,11 @@ class flisteicons {
 			}
 			render() {
 				let elements = super.render();
-				elements.props.children.props.className = 'eicon-wrapper' + ( this.props.jumboable ? ' jumboable' : '' );
+				elements.props.children.props.className = 'emoji eicon-wrapper' + ( this.props.jumboable ? ' jumboable' : '' );
 				elements.props.children.props.children[ 1 ].props.onClick = () => {
 					this.setState( { isFavorite: self.favouriteEicon( this.props.eiconName ) } );
 				};
+				elements.props.children.props.children[ 0 ].props.className = this.props.jumboable ? ' jumboable' : '';
 				elements.props.children.props.children[ 0 ].props.onClick = ( e ) => {
 					let wrapper = e.currentTarget.parentNode;
 					let elementGroup = [ wrapper ];
@@ -595,7 +597,6 @@ class flisteicons {
 			let match = body.match( /\/\/META(.*)\*\/\// );
 			if ( null !== match ) {
 				try {
-					console.log( body );
 					let META = JSON.parse( match[ 1 ] );
 					let newestVersion = META.version.split( '.' );
 					let thisVersion = this.getVersion().split( '.' );
