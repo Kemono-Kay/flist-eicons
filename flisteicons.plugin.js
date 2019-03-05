@@ -1,10 +1,10 @@
-//META{"name":"flisteicons","version":"1.0.1","website":"https://github.com/Kemono-Kay/flist-eicons","source":"https://raw.githubusercontent.com/Kemono-Kay/flist-eicons/master/flisteicons.plugin.js"}*//
+//META{"name":"flisteicons","version":"1.0.2","website":"https://github.com/Kemono-Kay/flist-eicons","source":"https://raw.githubusercontent.com/Kemono-Kay/flist-eicons/master/flisteicons.plugin.js"}*//
 
 class flisteicons {
 	getName() { return "F-list eicons"; }
 	getShortName() { return "flisteicons"; }
 	getDescription() { return "Allows users to use F-list eicons as emotes."; }
-	getVersion() { return "1.0.1"; }
+	getVersion() { return "1.0.2"; }
 	getAuthor() { return "Kemono-Kay"; }
 	getSettingsPanel() { return this.settingsPanel; }
 	load() {
