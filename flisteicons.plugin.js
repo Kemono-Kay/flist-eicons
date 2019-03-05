@@ -27,7 +27,12 @@ class flisteicons {
 		if ( 'undefined' === typeof this.readData( 'default-eicon' ) )
 			this.loadDefaultEicon();
 		if ( this.readData( 'display-changelog' ) !== this.getVersion() ) {
-			this.displayChangelog( [ this.getVersion() ] );
+			let versions = [];
+			for ( let version in this.changelog ) {
+				if ( this.readData( 'display-changelog' ) == version ) break;
+				versions.push( version );
+			}
+			this.displayChangelog( versions );
 			this.writeData( 'display-changelog', this.getVersion() );
 		}
 		this.methods = [];
@@ -46,6 +51,7 @@ class flisteicons {
 	get changelog() {
 		return {
 			'1.0.2': [
+				`Changelog now displays all changes since you last updated, not only the most recent version.`,
 				`No extra custom css is needed to style eicons.`,
 			],
 			'1.0.1': [
