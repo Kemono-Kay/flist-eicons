@@ -1,539 +1,896 @@
-//META{"name":"flisteicons"}*//
-
-/*
-
-TODO:
-Zoom in on eicons
-Allow clearing individual eicons from history
-Allow insertion of eicons in history as you're typing (like is the case for emoji)
-
-*/
-
-const request = require( 'request' );
-const pluginName = 'flisteicons';
-const eiconPattern = /:[f]!([ \w-]+?):/i;
-var currentText = '';
+//META{"name":"flisteicons","version":"1.0.0","website":"https://github.com/Kemono-Kay/flist-eicons","source":"https://raw.githubusercontent.com/Kemono-Kay/flist-eicons/master/flisteicons.plugin.js"}*//
 
 class flisteicons {
 	getName() { return "F-list eicons"; }
-	getShortName() { return "flei"; }
-	getDescription() { return "Inserts F-list eicons into messages where applicable"; }
-	getVersion() { return "0.3.2"; }
+	getShortName() { return "flisteicons"; }
+	getDescription() { return "Allows users to use F-list eicons as emotes."; }
+	getVersion() { return "1.0.0"; }
 	getAuthor() { return "Kemono-Kay"; }
-	getSettingsPanel() { return buildSettingsPage(); }
-	stop() {}
+	getSettingsPanel() { return this.settingsPanel; }
+	load() {
+		this.checkForUpdate( ( updateAvailable ) => {
+			if ( updateAvailable ) {
+				BdApi.showToast( `${this.getName()} v${updateAvailable.version} is now available.`, { type: 'info', timeout: '6000' } );
+			} else if ( null === updateAvailable ) {
+				BdApi.showToast( `${this.getName()} could not check for updates at this time.`, { type: 'warn' } );
+			} else if ( false === updateAvailable ) {
+				BdApi.showToast( `The ${this.getName()} plugin is up to date.` );
+			}
+		} );
+	}
+	stop() {
+		this.unpatchAllMethods();
+		emoteModule = new EmoteModule(); emoteModule.init();
+		quickEmoteMenu = new QuickEmoteMenu(); quickEmoteMenu.init();
+	}
 	start() {
-		loadDefaultEicon();
-	}
-	onSwitch() {
-		// Find the main textArea and attach handlers for managing eicon history.
-		attachTextAreaHandlers( document );
-		
-		// Upon switching to a different view, try inserting icons.
-		document.querySelectorAll( '.da-messagesWrapper .da-message' ).forEach( ( element ) => {
-			setTimeout( () => { 
-				insertIcons( element );
-			} );
-		} );
-	}
-	observer( { addedNodes } ) {
-		addedNodes.forEach( handleMutation );
-	}
-}
-
-/*
- * Checks whether an eicon exists by file contents
- */
-function eiconExists( body ) {
-	let standard = readData( 'default-eicon' );
-	if ( 'undefined' === typeof standard )
-		return true;
-	return standard !== body;
-}
-
-/*
- * Gets the data of the eicon with the given name.
- */
-function getEiconData( name, callback ) {
-	request( getEiconUrl( name ), ( error, response, body ) => {
-		setTimeout( callback, 0, body );
-	} );
-}
-
-/*
- * Gets the data of the default eicon.
- */
-function loadDefaultEicon() {
-	if ( 'undefined' === typeof readData( 'default-eicon' ) ) {
-		request( getEiconUrl(), ( error, response, body ) => {
-			if ( 'undefined' !== typeof body ) {
-				writeData( 'default-eicon', body );
-			} else {
-				setTimeout( loadDefaultEicon(), 10000 );
-			}
-		} );
-	}
-}
-
-/*
- * Writes to the plugin data.
- */
-function writeData( key, data ) {
-	BdApi.saveData( pluginName, key, data );
-}
-
-/*
- * Reads from the plugin data.
- */
-function readData( key, fallback ) {
-	let value = BdApi.loadData( pluginName, key );
-	return typeof value !== 'undefined' ? value : fallback;
-}
-
-/*
- * Gets the url of a given eicon.
- */
-function getEiconUrl( name = '' ) {
-	return `https://static.f-list.net/images/eicon/${name}.gif`;
-}
-
-/*
- * Looks for text nodes to insert icons into, within the given element's child nodes.
- */
-function insertIcons( el ) {		
-	let replaceOnThis = false;
-	for ( let element of [ ...el.childNodes ] ) {
-		// Do not replace eicons inside pre or code tags.
-		if ( element.nodeType == document.ELEMENT_NODE && ( element.tagName.toLowerCase() == 'pre' || element.tagName.toLowerCase() == 'code' ) )
-			return;
-		
-		// Call recursively
-		insertIcons( element );
-		
-		// If this is a text node, try matching tags.
-		if ( element.nodeType == document.TEXT_NODE )
-			replaceOnThis = true;
-	}
-	
-	if ( replaceOnThis )
-		replaceMatches( el );
-}
-
-/*
- * Adds an eicon to the history list.
- */
-function addToHistory( eicon ) {
-	var history = readData( 'history', [] );
-	var maxLength = readData( 'maxhistory', 50 );
-	var index = history.indexOf( eicon );
-	if ( index >= 0 ) {
-		history.unshift( history.splice( index, 1 )[ 0 ] );
-		history.splice( maxLength );
-		writeData( 'history', history );
-	} else {
-		getEiconData( eicon, ( data ) => {
-			if ( eiconExists( data ) ) {
-				history.unshift( eicon );
-				history.splice( maxLength );
-				writeData( 'history', history );
-			}
-		} );
-	}
-}
-
-/*
- * Inserts an eicon code into a textArea.
- */
-function insertTextAreaEiconCode( textArea, eicon ) {
-	let text = textArea.value;
-	if ( textArea.selectionStart || textArea.selectionStart == '0' ) {
-		text = textArea.value.substring( 0, textArea.selectionStart ) + `:f!${eicon}:` + textArea.value.substring( textArea.selectionEnd, textArea.value.length );
-	} else {
-		text += `:f!${eicon}:`;
-	}
-	Utils.insertText( $( textArea )[ 0 ], text );
-}
-
-/*
- * Creates the eicon image element
- */
-function createEiconImage( name ) {
-	var img = document.createElement( 'img' );
-	img.alt = `:f!${name}:`;
-	img.draggable = false;
-	img.src = getEiconUrl( name );
-	img.classList.add( 'emoji', 'da-emoji' );
-	return img;
-}
-
-/*
- * Replaces any eicons codes with the actual images within text nodes in the given elements.
- */
-function replaceMatches( element ) {
-	let jumboable = true;
-	
-	// Formatting specific to search results; its nodes are broken up. This fuses the text nodes together so icons can be inserted.
-	for ( let node of [ ...element.childNodes ] ) {
-		if ( node.nodeType == document.ELEMENT_NODE && node.tagName.toLowerCase() == 'span' && !node.className ) {
-			let text = document.createTextNode( node.textContent )
-			element.insertBefore( text, node );
-			node.remove();
-			node = text;
+		if ( 'undefined' === typeof this.readData( 'default-eicon' ) )
+			this.loadDefaultEicon();
+		if ( this.readData( 'display-changelog' ) !== this.getVersion() ) {
+			this.displayChangelog( [ this.getVersion() ] );
+			this.writeData( 'display-changelog', this.getVersion() );
 		}
-		
-		if ( node.previousSibling == null )
-			continue;
-		
-		if ( node.nodeType == document.TEXT_NODE && node.previousSibling.nodeType == document.TEXT_NODE ) {
-			node.previousSibling.appendData( node.textContent );
-			node.remove();
-		}
+		this.methods = [];
+		this.patchRender();
+		this.patchQuickEmoteMenu();
+		BdApi.clearCSS( this.getShortName() );
+		BdApi.injectCSS( this.getShortName(), this.css );
+		emoteModule = new EmoteModule(); emoteModule.init();
+		quickEmoteMenu = new QuickEmoteMenu(); quickEmoteMenu.init();
 	}
 	
-	// Try inserting images in each text node.
-	for ( let node of [ ...element.childNodes ] ) {
-		if ( node.nodeType != document.TEXT_NODE )
-			continue;
-		
-		let whitespace = /^\s*$/;
-		let text = node.textContent;
-		let splitText = [];
-		let icons = [];
-		
-		// Text is split on eicons so that img elements can be inserted between the resulting strings.
-		while ( eiconPattern.test( text ) ) {
-			
-			// Split text on eicon
-			let match = eiconPattern.exec( text );
-			let name = match[ 1 ].toLowerCase();
-			let beforeText = text.substring( 0, match.index );
-			if( !whitespace.test( beforeText ) )
-				jumboable = false;
-			splitText.push( beforeText );
-			text = text.substring( match.index + match[ 0 ].length );
-			
-			// Create eicon
-			let img = createEiconImage( name );
-			attachTooltipHandlers( img );
-			
-			let favs = readData( 'favourites', [] );
-			
-			
-			let input = document.createElement( 'input' );
-			input.classList.add( 'fav' );
-			input.setAttribute( 'data-eicon', name );
-			input.title = 'Favourite!';
-			input.type = 'button';
-			input.style.zIndex = 1;
-			if ( favs.indexOf( name ) >= 0 ) {
-				input.classList.add( 'active' );
+	get sourceUrl() { return 'https://raw.githubusercontent.com/Kemono-Kay/flist-eicons/master/flisteicons.plugin.js'; }
+	get eiconPattern() { return /:[f]!([ \w-]+?):/ig; }
+	getEiconUrl( name = '' ) { return `https://static.f-list.net/images/eicon/${name}.gif`; }	
+	get whitespace() { return /^\s*$/; }
+	get changelog() {
+		return {
+			'1.0.0': [
+				`Type eicon names in chat to have them be displayed to other users of this plugin like so: <code>:f!name:</code>`,
+				`This plugin has a settings panel to adjust your preferences, or update the plugin when a new update is available.`,
+				`Sent eicons will get added to your history in the emoji picker for quick access.`,
+				`Eicons can be favourited so that they'll always stay available in the emoji picker.`,
+				`When written without spaces or with only a newline between them, eicons will be chained together and treated as one big image.`,
+				`Eicons can be clicked on to view them at their full size.`,
+			],
+		};
+	}
+	get css() {
+		return `
+			@keyframes eicon-zoom-wrapper-fade-in {
+				from { opacity: 0 }
+				to { opacity: 1 }
 			}
-			input.addEventListener( 'click', toggleFavourite );
 			
-			// Wrap eicon in a wrapper
+			@keyframes eicon-zoom-img-fade-in {
+				from { width: 0px; height: 0px; }
+				to { width: 100px; height: 100px; }
+			}
+			
+			.eicon-wrapper {
+				position: relative;
+				display: inline-flex;
+				object-fit: contain;
+				margin-bottom: -.3em;
+				vertical-align: top;
+				height: 1.45em;
+				width: 1.45em;
+			}
+			
+			.eicon-wrapper.jumboable {
+				margin-top: .2em;
+				height: 2rem;
+				width: 2rem;
+			}
+			
+			.eicon-wrapper input {
+				z-index: 1;
+			}
+			
+			.eicon-wrapper img {
+				position: absolute;
+				height: 100%;
+				width: 100%;
+				cursor: pointer;
+			}
+			
+			.eicon-wrapper:hover input {
+				display: block;
+			}
+			
+			.eicon-changelog-wrapper,
+			.eicon-zoom-wrapper {
+				opacity: 1;
+				background-color: rgb( 0, 0, 0, 0.85 );
+				display: flex;
+				justify-content: center;
+				align-items: center;
+				flex-direction: column;
+				z-index: 1000;
+				position: fixed;
+				right: 0;
+				top: 0;
+				bottom: 0;
+				left: 0;
+				animation: eicon-zoom-wrapper-fade-in;
+				animation-iteration-count: 1;
+				animation-duration: 0.25s;
+			}
+			
+			.eicon-changelog-wrapper > div::-webkit-scrollbar-track {
+				background-color: transparent;
+				border-color: transparent;
+			}
+			
+			.eicon-changelog-wrapper > div::-webkit-scrollbar-track-piece {
+				background-color: #2f3136;
+				border: 3px solid #36393f;
+				border-radius: 7px;
+			}
+			
+			.eicon-changelog-wrapper > div::-webkit-scrollbar-thumb {
+				background-color: #202225;
+				border: 3px solid #36393f;
+				border-radius: 7px;
+			}
+			
+			.eicon-changelog-wrapper > div::-webkit-scrollbar {
+				width: 14px;
+			}
+			
+			.eicon-changelog-wrapper > div {
+				
+				overflow-y: auto;
+				padding: 1rem;
+				border-radius: .5rem;
+				width: 50%;
+				height: 80%;
+				max-width: 600px;
+				min-height: 400px;
+				background-color: #36393f;
+			}
+			
+			.eicon-changelog-wrapper h2 {
+				color: #f6f6f7;
+				font-size: 16px;
+				font-weight: 600;
+				line-height: 20px;
+				text-transform: uppercase;
+			}
+			
+			.eicon-changelog-wrapper ul {
+				margin: 20px 0;
+				color: #b9bbbe;
+				line-height: 24px;
+				padding: 0 2em;
+				list-style-type: disc;
+			}
+			
+			.eicon-changelog-wrapper code {
+				background: #2f3136;
+				border-radius: 3px;
+				font-size: 85%;
+				padding: .2em;
+			}
+			
+			.eicon-zoom-wrapper > div {
+				display: flex;
+			}
+			
+			.eicon-changelog-wrapper.eicon-fade-out,
+			.eicon-zoom-wrapper.eicon-fade-out {
+				transition: .25s;
+				opacity: 0;
+			}
+			
+			.eicon-zoom-wrapper img {
+				width: 100px;
+				height: 100px;
+				margin: auto;
+				animation: eicon-zoom-img-fade-in;
+				animation-iteration-count: 1;
+				animation-duration: 0.25s;
+			}
+			
+			.eicon-zoom-wrapper.eicon-fade-out img {
+				transition: .25s;
+				width: 0px;
+				height: 0px; 
+			}
+			
+			#bda-qem-eicon {
+				order: 2;
+			}
+			
+			#bda-qem-eicon-container {
+				width: 346px;
+				height: 327px;
+				background-color: #fff;
+				border-radius: 0 0 5px 5px;
+			}
+			
+			.eicon-category-title {
+				color: #98aab6;
+				font-size: 12px;
+				font-weight: 500;
+				height: 32px;
+				line-height: 32px;
+				padding: 0 4px;
+				text-transform: uppercase;
+			}
+			
+			.bda-dark #bda-qem-eicon-container {
+				background-color: #353535;
+			}
+			
+			#eicon-settings {
+				margin: 20px;
+			}
+			
+			#eicon-settings hr {
+				margin: 20px 0;
+				height: 1px;
+				background-color: rgba(114,118,125,.3);
+			}
+			
+			#eicon-settings label {
+				display: block;
+				color: #b9bbbe;
+				letter-spacing: .5px;
+				text-transform: uppercase;
+				margin-bottom: 8px;
+				font-weight: 600;
+				line-height: 16px;
+				font-size: 12px;
+				user-select: none;
+			}
+			
+			#eicon-settings input[type="number"]:focus {
+				border-color: #7289da;
+			}
+			
+			#eicon-settings input[type="number"] {
+				width: 100%;
+				font-family: Whitney,Helvetica Neue,Helvetica,Arial,sans-serif;
+				font-size: 16px;
+				border-radius: 3px;
+				border-style: solid;
+				border-width: 1px;
+				height: 40px;
+				padding: 10px;
+				background-color: rgba(0,0,0,.1);
+				border-color: rgba(0,0,0,.3);
+				color: #f6f6f7;
+				transition: background-color .15s ease,border .15s ease;
+			}
+			
+			#eicon-settings input[type="button"],
+			#eicon-settings input[type="submit"] {
+				cursor: pointer;
+				height: 32px;
+				min-width: 60px;
+				border: none;
+				border-radius: 3px;
+				font-size: 14px;
+				font-weight: 500;
+				line-height: 16px;
+				padding: 2px 16px;
+				user-select: none;
+				color: white;
+			}
+			
+			#eicon-settings input[type="button"][disabled] {
+				color: lightgray !important;
+				background-color: #8b97c1 !important;
+				cursor: auto !important;
+			}
+			
+			#eicon-settings input[type="submit"] {
+				background-color: #43b581;
+			}
+			
+			#eicon-settings input[type="submit"]:hover {
+				background-color: #3ca374;
+			}
+			
+			#eicon-settings input[type="button"] {
+				background-color: #7289da;
+			}
+			
+			#eicon-settings input[type="button"]:hover {
+				background-color: #677bc4;
+			}
+			
+			#eicon-settings input.link {
+				background-color: transparent !important;
+			}
+			
+			#eicon-settings input.link:hover {
+				text-decoration: underline;
+			}
+			
+			#eicon-settings .form-controls {
+				display: flex;
+			}
+			
+			#eicon-settings .cancel {
+				margin-left: auto;
+			}
+			
+			#eicon-settings > div {
+				margin-bottom: 20px;
+			}
+			
+			#eicon-settings > div:last-of-type {
+				margin-bottom: 0;
+			}
+			`;
+	}
+	get EiconReactComponent() {
+		let self = this;
+		return class extends BDEmote {
+			constructor( props ) {
+				let name = props.eiconName;
+				props.name = `:f!${name}:`;
+				props.url = self.getEiconUrl( name );
+				super( props );
+				this.setState( { isFavorite: self.isFavorite( name ) } );
+			}
+			onMouseEnter() {
+				if ( !this.state.shouldAnimate && this.animateOnHover ) {
+					this.setState( { shouldAnimate: true } );
+				}
+				if ( !this.state.isFavorite && self.isFavorite( this.props.eiconName ) ) {
+					this.setState( { isFavorite: true } );
+				} else if ( this.state.isFavorite && !self.isFavorite( this.props.eiconName ) ) {
+					this.setState( { isFavorite: false } );
+				}
+			}
+			render() {
+				let elements = super.render();
+				elements.props.children.props.className = 'eicon-wrapper' + ( this.props.jumboable ? ' jumboable' : '' );
+				elements.props.children.props.children[ 1 ].props.onClick = () => {
+					this.setState( { isFavorite: self.favouriteEicon( this.props.eiconName ) } );
+				};
+				elements.props.children.props.children[ 0 ].props.onClick = ( e ) => {
+					let wrapper = e.currentTarget.parentNode;
+					let elementGroup = [ wrapper ];
+					let addPrev = function( el ) {
+						let prev = el.previousSibling;
+						if ( null !== prev && prev.classList && prev.classList.contains( 'eicon-wrapper' ) ) {
+							elementGroup.unshift( prev );
+						} else if ( null !== prev && document.TEXT_NODE === prev.nodeType && prev.textContent === '\n' ) {
+							elementGroup.unshift({});
+						} else {
+							return;
+						}
+						addPrev( prev );
+					};
+					let addNext = function( el ) {
+						let next = el.nextSibling;
+						if ( null !== next && next.classList && next.classList.contains( 'eicon-wrapper' ) ) {
+							elementGroup.push( next );
+						} else if ( null !== next && document.TEXT_NODE === next.nodeType && next.textContent === '\n' ) {
+							elementGroup.push({});
+						} else {
+							return;
+						}
+						addNext( next );
+					};
+					addPrev( wrapper );
+					addNext( wrapper );
+					for ( let index in elementGroup ) {
+						if ( Object.keys( elementGroup[ index ] ).length === 0 ) {
+							elementGroup[ index ] = {};
+						} else {
+							let img = elementGroup[ index ].firstElementChild;
+							elementGroup[ index ] = { src: img.getAttribute( 'src' ), alt: img.getAttribute( 'alt' ) };
+						}
+					}
+					self.showEnlarged( elementGroup );
+				};
+				return elements;
+			}
+		}
+	}
+	get config() { return [
+		{ id: 'eicons_maxHistory', name: 'maxhistory', title: 'Eicon History Size Limit', tag: 'input', props: { min: 0, type: 'number', value: 50 } },
+		{ id: 'eicons_clearHistory', name: null, title: null, tag: 'input', props: { value: 'Clear eicon history', type: 'button' }, events: { click: () => { this.writeData( 'history', [] ); this.updateEicons(); BdApi.showToast( 'Eicon history has been cleared.', { type: 'success' } ); } } },
+	]; }
+	get settingsPanel() {
+		let pluginName = this.getShortName();
+		let config = this.config;
+		
+		let form = document.createElement( 'form' );
+		form.id = 'eicon-settings';
+		form.addEventListener( 'submit', () => {
+			event.preventDefault();
+			for ( let option of config ) {
+				if ( null !== option.name ) {
+					let element = form.querySelector( `#${option.id}` );
+					this.writeData( option.name, element.value );
+				}
+			}
+			form.parentNode.previousElementSibling.click();
+			BdApi.showToast( 'Settings have been successfully saved.', { type: 'success' } );
+		} );
+		
+		let formContents;
+		for ( let option of config ) {
 			let wrapper = document.createElement( 'div' );
-			wrapper.classList.add( 'emotewrapper' );
+			if ( option.title !== null ) {
+				let title = document.createElement( 'label' );
+				title.setAttribute( 'for', option.id );
+				title.appendChild( document.createTextNode( option.title ) );
+				wrapper.appendChild( title );
+			}
 			
-			wrapper.appendChild( img );
-			wrapper.appendChild( input );
+			let el = document.createElement( option.tag );
+			el.id = option.id;
+			if ( option.name !== null ) {
+				option.props.name = option.name;
+			}
+			for ( let prop in option.props ) {
+				el.setAttribute( prop, option.props[ prop ] );
+			}
+			for ( let event in option.events ) {
+				el.addEventListener( event, option.events[ event ] );
+			}
+			switch ( option.tag ) {
+				case 'input':
+					let val = this.readData( option.name, option.value );
+					if ( 'undefined' !== typeof val ) {
+						el.value = val;
+					}
+					wrapper.appendChild( el );
+					break;
+			}
+			form.appendChild( wrapper );
 			
-			icons.push( wrapper );
 		}
-		
-		splitText.push( text );
-		
-		for ( let index in splitText ) {
-			element.insertBefore( document.createTextNode( splitText[ index ] ), node );
-			if ( index != icons.length )
-				element.insertBefore( icons[ index ], node );
-		}
-		
-		node.remove();
-		
-		if( !whitespace.test( text ) )
-				jumboable = false;
+		form.appendChild( document.createElement( 'hr' ) );
+		let formControls = document.createElement( 'div' );	
+		formControls.className = 'form-controls';		
+		let update = document.createElement( 'input' );
+		update.type = 'button';
+		update.value = 'Update';
+		update.disabled = true;
+		let updated = null;
+		setTimeout( () => { 
+			this.checkForUpdate( ( updateAvailable ) => {
+				if ( updateAvailable ) {
+					update.disabled = false;
+					update.value += ` to v${updateAvailable.version}`;
+					updated = updateAvailable;
+				} else if ( false === updateAvailable ) {
+					update.value = 'Up to date';
+				}
+			} )
+		} );
+		update.addEventListener( 'click', () => {
+			if ( updated !== null ) {
+				let { writeFileSync } = require( 'fs' );
+				writeFileSync( __filename, updated.body );
+				BdApi.showToast( `${this.getName()} has been updated to v${updated.version}` , { type: 'success' } );
+				form.parentNode.previousElementSibling.click();
+			}
+		} );
+		formControls.appendChild( update );
+		let link = document.createElement( 'input' );
+		link.type = 'button';
+		link.className = 'link';
+		link.value = 'Changelog';
+		link.addEventListener( 'click', () => {
+			this.displayChangelog();
+		} );
+		formControls.appendChild( link );
+		let cancel = document.createElement( 'input' );
+		cancel.type = 'button';
+		cancel.className = 'cancel link';
+		cancel.value = 'Cancel';
+		cancel.addEventListener( 'click', () => {
+			form.parentNode.previousElementSibling.click();
+		} );
+		formControls.appendChild( cancel );
+		let save = document.createElement( 'input' );
+		save.type = 'submit';
+		save.value = 'Save';
+		formControls.appendChild( save );
+		form.appendChild( formControls );
+		return form;
 	}
 	
-	// If no visible text accompanies the eicon, make it jumboable (larger size)
-	if ( jumboable ) {
-		for ( let img of [ ...element.getElementsByTagName( 'img' ) ] ) {
-			img.classList.add( 'jumboable', 'da-jumboable' );
+	/*
+	 * Displays the changelog for the listed version.
+	 */
+	displayChangelog( versions = null ) {
+		if ( null === versions )
+			versions = Object.keys( this.changelog );
+		let target = document.getElementById( 'app-mount' ).lastElementChild;
+		let wrapper = document.createElement( 'div' );
+		let close = () => { 
+			wrapper.classList.add( 'eicon-fade-out' );
+			document.removeEventListener( 'click', close );
+			document.removeEventListener( 'keydown', closeByKeystroke );
+			setTimeout( () => { 
+				if ( wrapper !== null ) 
+					wrapper.remove();
+			}, 250 ); 
+		};
+		let closeByKeystroke = ( e ) => { 
+			if ( 'Escape' === event.code ) {
+				close();
+			}
+			e.preventDefault();
+		};
+		
+		wrapper.addEventListener( 'click', close );
+		document.addEventListener( 'keydown', closeByKeystroke );
+		
+		wrapper.className = 'eicon-changelog-wrapper';
+		let modal = document.createElement( 'div' );
+		modal.onclick = () => { event.stopPropagation(); }
+		wrapper.appendChild( modal );
+		for ( let version of versions ) {
+			let h2 = document.createElement( 'h2' );
+			h2.appendChild( document.createTextNode( `Changes in ${this.getName()} v${version}` ) );
+			modal.appendChild( h2 );
+			let ul = document.createElement( 'ul' );
+			let changes = this.changelog[ version ];
+			for ( let change of changes ) {
+				ul.innerHTML += `<li>${change}</li>`
+			}
+			modal.appendChild( ul );
 		}
-		for ( let wrapper of [ ...element.getElementsByClassName( 'emotewrapper' ) ] ) {
-			wrapper.classList.add( 'jumboable' );
-		}
+		target.appendChild( wrapper );
 	}
-}
-
-/*
- * Event handler for favourite button click event, where it adds/removes the associated icon to/from the favourites.
- */
-function toggleFavourite () {
-	let favourites = readData( 'favourites', [] );
-	let name = this.getAttribute( 'data-eicon' );
-	let index = favourites.indexOf( name );
-	console.log( name );
-	let buttons = document.querySelectorAll( `[data-eicon="${name}"]` );
-	if ( index < 0 ) {
-		favourites.unshift( name );
-		buttons.forEach( ( element ) => { console.log(element); element.classList.add( 'active' ); } );
-	} else {
-		favourites.splice( index, 1 );
-		buttons.forEach( ( element ) => { console.log(element); element.classList.remove( 'active' ); } );
-	}
-	writeData( 'favourites', favourites )
-}
-
-/*
- * Attaches tooltip event handlers to the eicon.
- */
-function attachTooltipHandlers( img ){
-	var timeoutId = null;
-	img.addEventListener( 'mouseover', () => { timeoutId = setTimeout( displayTooltip, 1000, img ); } );
-	img.addEventListener( 'mouseout', () => { clearTimeout( timeoutId ); removeTooltip(); } );
-}
-
-/*
- * Displays a tooltip for an eicon
- */
-function displayTooltip( element ) {
-	// Create the tooltip element
-	let tooltip = document.createElement( 'div' );
-	tooltip.setAttribute( 'class', 'tooltip-1OS-Ti da-tooltip top-1pTh1F da-top black-2bmmnj da-black' );
-	tooltip.appendChild( document.createTextNode( element.getAttribute( 'alt' ) ) );
-	document.getElementsByClassName( 'da-tooltips' )[ 0 ].appendChild( tooltip );
 	
-	// Set the desired position of the tooltip element after it's added to the DOM
-	let rect = element.getBoundingClientRect();
-	let bottom = window.screen.height - rect.top - tooltip.clientHeight;
-	let left = rect.left / 2 + rect.right / 2 - tooltip.clientWidth / 2;
-	tooltip.style.bottom = `${bottom}px`;
-	tooltip.style.left = `${left}px`;
-}
-
-/*
- * Removes any displayed tooltips
- */
-function removeTooltip() {
-	document.getElementsByClassName('da-tooltips')[ 0 ].innerHTML = '';
-}
-
-/*
- * Event handler for textArea keyup event, where it finds a typed eicon so it can be added to the history.
- */
-function findTypedEicon( event ) {
-	if ( 'Enter' === event.code) {
-		while ( eiconPattern.test( currentText ) ) {
-			// Split text on eicon
-			let match = eiconPattern.exec( currentText );
-			let name = match[ 1 ].toLowerCase();
-			currentText = currentText.substring( match.index + match[ 0 ].length );
-			setTimeout( addToHistory, 0, name );
+	/*
+	 * Fetches the eicon container for the QuickEmoteMenu
+	 */
+	getEiconContainer( data ) {
+		let eiContainer = `
+			<div id="bda-qem-eicon-container">
+				<div class="scroller-wrap scrollerWrap-2lJEkd fade">
+					<div class="scroller scroller-2FKFPG">
+						<div class="emote-menu-inner">
+							<div class="eicon-category-title">Favourites</div>`;
+		for ( let favourite of this.readData( 'favourites', [] ) ) {
+			let title = `:f!${favourite}:`
+			let src = this.getEiconUrl( favourite );
+			eiContainer += `
+				<div class="emote-container">
+					<img class="emote-icon eicon-icon" alt="${title}" src="${src}" title="${title}">
+				</div>
+			`;
 		}
-		currentText = '';
+		eiContainer += `<div class="eicon-category-title">Recently Used</div>`;
+		for ( let history of this.readData( 'history', [] ) ) {
+			let title = `:f!${history}:`
+			let src = this.getEiconUrl( history );
+			eiContainer += `
+				<div class="emote-container">
+					<img class="emote-icon eicon-icon" alt="${title}" src="${src}" title="${title}">
+				</div>
+			`;
+		}
+		eiContainer +=`
+						</div>
+					</div>
+				</div>
+			</div>
+		`;
+		return eiContainer;
 	}
-}
-
-/*
- * Event handler for textArea input and focus event, where it updates the current text.
- */
-function updateTypedValue( event ) {
-	if ( this.value ) {
-		currentText = this.value;
+	
+	/*
+	 * Checks whether the plugin has an update available
+	 */
+	checkForUpdate( callback ) {
+		let request = require( 'request' );
+		request( this.sourceUrl, ( error, response, body ) => {
+			let match = body.match( /\/\/META(.*)\*\/\// );
+			if ( null !== match ) {
+				try {
+					let META = JSON.parse( match[ 1 ] );
+					let newestVersion = META.version.split( '.' );
+					let thisVersion = this.getVersion().split( '.' );
+					for ( let index in thisVersion ) {
+						if ( newestVersion[ index ] > thisVersion[ index ] ) {
+							return callback( { version: META.version, body: body } );
+						}
+					}
+				} catch ( e ) {
+					return callback( null );
+				}
+			}
+			return callback( false );
+		} );
 	}
-}
-
-/*
- * Attaches event handlers for a textArea.
- */
-function attachTextAreaHandlers( root ) {
-	let textArea = root.querySelector( '.da-textArea' );
-	if ( null !== textArea ) {
-		textArea.addEventListener( 'focus', updateTypedValue );
-		textArea.addEventListener( 'input', updateTypedValue );
-		textArea.addEventListener( 'keyup', findTypedEicon );
+	
+	/*
+	 * Handles the rendering data to insert data such as eicons into it.
+	 */
+	patchRender() {
+		let self = this;
+		self.methods.push( Utils.monkeyPatch( BDV2.MessageContentComponent.prototype, 'render', {
+			after: ( { returnValue, thisObject } ) => {
+				Utils.monkeyPatch( returnValue.props, "children", { silent: true, once: true, after: ( { returnValue } ) => {
+					const markup = returnValue.props.children[ 1 ];
+					if ( !markup.props.children ) return;
+					const nodes = markup.props.children[ 1 ];
+					if ( !nodes || !nodes.length ) return;
+					for ( let index in nodes ) {
+						if ( 'string' === typeof nodes[ index ] ) {
+							let newElements = self.tryInsertEicon( nodes.splice( index, 1 )[ 0 ] );
+							for ( let element of newElements ) {
+								nodes.splice( index++, 0, element );
+							}
+						}
+					}
+				} } );
+				if ( 'SENDING' === thisObject.props.message.state ) {
+					let matches = thisObject.props.message.content.match( self.eiconPattern );
+					if ( null !== matches ) {
+						for ( let match of matches ) {
+							self.addToHistory( self.eiconPattern.exec( match )[ 1 ] );
+						}
+					}
+				}
+			}
+		} ) );
 	}
-}
 
-/*
- * Upon mutation, do relevant action.
- */
-function handleMutation( element ) {
-	if ( element.classList ) {		
-		if ( element.id == 'bda-qem' ) {
-			// Upon loading the emoji popout, insert eicons that have been recently used.
-			var button = document.createElement( 'button' );
-			button.id = 'bda-qem-eicons';					
-			button.addEventListener( 'click', () => {
-				document.querySelector('.da-emojiPicker').style.display = 'none';
-				document.querySelector('#bda-qem-twitch-container').style.display = 'none';
-				document.querySelector('#bda-qem-favourite-container').style.display = 'none';
-				document.querySelector('#bda-qem-eicon-container').style.display = 'block';
-				for ( let child of [ ...button.parentNode.children] ) {
-					child.classList.remove( 'active' );
-				}						
-				button.classList.add( 'active' ); 
-				return false;
+	/*
+	 * Patches the QuickEmoteMenu to allow for eicons to be inserted into it
+	 */
+	patchQuickEmoteMenu() {
+		let self = this;
+		
+		let init = function ( instance ) {
+			let index = instance.qmeHeader.lastIndexOf( '</div>' );
+			instance.qmeHeader = instance.qmeHeader.slice( 0, index ) + `
+				<button id="bda-qem-eicon" onclick="quickEmoteMenu.switchHandler(this); return false;">Eicons</button>
+			` + instance.qmeHeader.slice( index );
+			instance.eiContainer = self.getEiconContainer();
+		}
+		if ( !quickEmoteMenu ) init( quickEmoteMenu );
+		this.methods.push( BdApi.monkeyPatch( QuickEmoteMenu.prototype, 'init', { after: ( data ) => {
+			init( data.thisObject );
+		} } ) );
+		
+		this.methods.push( BdApi.monkeyPatch( QuickEmoteMenu.prototype, 'switchQem', { after: ( data ) => {
+			let eicon = $( '#bda-qem-eicon' );
+			eicon.removeClass( 'active' );
+			$( '#bda-qem-eicon-container' ).hide();
+			if( data.methodArguments[ 0 ] == 'bda-qem-eicon') {
+				eicon.addClass( 'active' );
+				$( '#bda-qem-eicon-container' ).show();
+			}
+			let emoteIcon = $( '.eicon-icon' );
+			emoteIcon.off();
+			emoteIcon.on( 'click', function () {
+				var emote = $( this ).attr( 'title' );
+				var ta = Utils.getTextArea();
+				Utils.insertText( ta[ 0 ], ta.val() + emote );
 			} );
-			button.style.order = 2;
-			button.appendChild( document.createTextNode( 'Eicons' ) );
-			element.appendChild( button );
-			for ( let child of [ ...button.parentNode.children] ) {
-				if ( child !== button ) child.addEventListener( 'click', () => {
-					document.querySelector('#bda-qem-eicon-container').style.display = 'none';
-					document.querySelector('#bda-qem-eicons').classList.remove( 'active' );
-				} );
-			}
-			
-			var picker = document.createElement( 'div' );
-			picker.style.display = 'none';
-			picker.style.width = '346px';
-			picker.style.height = '327px';
-			picker.style.backgroundColor = '#353535';
-			picker.style.borderRadius = '0 0 5px 5px';
-			picker.id = 'bda-qem-eicon-container';
-			var scrollerWrap = document.createElement( 'div' );
-			scrollerWrap.classList.add( 'scroller-wrap', 'scrollerWrap-2lJEkd', 'fade' );
-			var scroller = document.createElement( 'div' );
-			scroller.classList.add( 'scroller', 'scroller-2FKFPG' );
-			var menuInner = document.createElement( 'div' );
-			menuInner.classList.add( 'emote-menu-inner' );
-			var categoryFavourites = document.createElement( 'div' );
-			categoryFavourites.style.color = '#98aab6';
-			categoryFavourites.style.fontSize = '12px';
-			categoryFavourites.style.fontWeight = '500';
-			categoryFavourites.style.height = '32px';
-			categoryFavourites.style.lineHeight = '32px';
-			categoryFavourites.style.padding = '0 4px';
-			categoryFavourites.style.textTransform = 'uppercase';
-			categoryFavourites.appendChild( document.createTextNode( 'Favourites' ) );
-			var categoryRecent = categoryFavourites.cloneNode( false );
-			categoryRecent.appendChild( document.createTextNode( 'Recently Used' ) );
-			
-			picker.appendChild( scrollerWrap );
-			scrollerWrap.appendChild( scroller );
-			scroller.appendChild( menuInner );
-			menuInner.appendChild( categoryFavourites );
-			for( let icon of readData( 'favourites', [] ) ) {
-				let container = document.createElement( 'div' );
-				container.classList.add( 'emote-container' );
-				var img = createEiconImage( icon );
-				img.classList.add( 'emote-icon', 'jumboable', 'da-jumboable' );
-				img.title = `:f!${icon}:`;
-				container.appendChild( img );
-				menuInner.appendChild( container );
-				var textArea = document.querySelector( '.popout-open' ).parentElement.parentElement.querySelector( 'textarea' );
-				container.addEventListener( 'click', () => { insertTextAreaEiconCode( textArea, icon ); } );
-			}
-			menuInner.appendChild( categoryRecent );
-			for( let icon of readData( 'history', [] ) ) {
-				let container = document.createElement( 'div' );
-				container.classList.add( 'emote-container' );
-				var img = createEiconImage( icon );
-				img.classList.add( 'emote-icon', 'jumboable', 'da-jumboable' );
-				img.title = `:f!${icon}:`;
-				container.appendChild( img );
-				menuInner.appendChild( container );
-				var textArea = document.querySelector( '.popout-open' ).parentElement.parentElement.querySelector( 'textarea' );
-				container.addEventListener( 'click', () => { insertTextAreaEiconCode( textArea, icon ); } );
-			}
-			
-			element.parentNode.appendChild( picker );
-		} else if ( element.classList.value === '' ) {
-			// If the element might contain a textArea, search for it and attach handlers for managing eicon history.
-			attachTextAreaHandlers( element );
-		}
-		if ( element.classList.contains( 'da-message' ) ) {
-			// Upon a message being sent, try insert icons.
-			insertIcons( element );
-		} else if (	element.classList.contains( 'da-container' )	) {
-			// Upon edit (characterData mutation) retry inserting icons.
-			var callback = function( mutationsList, observer ) {
-				insertIcons( element );
-				observer.disconnect();
-			};
-			var observer = new MutationObserver( callback );
-			observer.observe( element, { attributes: false, childList: false, subtree: true, characterData: true } );
-			
-			/* 
-			 * The mutation doesn't trigger if the edit is cancelled, but the eicon is removed when this happens.
-			 * If I insert the eicon straight away, though, it overwrites any edits that are made.
-			 * Therefore, this is triggered with a slight delay, to give the mutation time to occur first.
-			 */
-			setTimeout( () => { insertIcons( element ); }, 400 );
-		} else if ( 
-			element.classList.value === '' ||
-			//element.classList.contains( 'da-messagesWrapper' ) || 
-			element.classList.contains( 'da-modal' ) ||
-			element.classList.contains( 'da-resultsWrapper' ) ||
-			element.classList.contains( 'da-searchResultsWrap' )
-		) {
-			// Upon switching to a different view, bringing up a modal containing a message, or searching, try inserting icons.
-			let els = element.getElementsByClassName( 'da-message' );
-			for ( let i = 0; i < els.length; i++ ) {
-				insertIcons( els[ i ] );
-			}
-		}
+		} } ) );
+		
+		this.methods.push( BdApi.monkeyPatch( QuickEmoteMenu.prototype, 'obsCallback', { before: ( data ) => {
+			let e = $( data.methodArguments[ 0 ] );
+			e.append( data.thisObject.eiContainer );
+		} } ) );
 	}
-}
+	
+	/*
+	 * Unpatches all the monkey patched methods.
+	 */
+	unpatchAllMethods() {
+		for ( let method of this.methods ) {
+			method();
+		}
+		this.methods = undefined;
+	}
+	
+	/*
+	 * Writes to the plugin data.
+	 */
+	writeData( key, data ) {
+		BdApi.saveData( this.getShortName(), key, data );
+	}
 
-function buildSettingsPage() {
-	let maxHistoryInput = document.createElement( 'input' );
-	let maxHistoryLabel = document.createElement( 'label' );
-	let hr = document.createElement( 'hr' );
-	let buttonWrapper = document.createElement( 'div' );
-	let saveButton = document.createElement( 'button' );
-	let saveButtonContents = document.createElement( 'div' );
-	let clearHistoryButton = document.createElement( 'button' );
-	let clearHistoryButtonContents = document.createElement( 'div' );
-	
-	maxHistoryInput.classList.add( 'inputDefault-_djjkz', 'input-cIJ7To', 'size16-14cGz5', 'da-inputDefault', 'da-input', 'da-size16' );
-	maxHistoryInput.name = 'maxHistory';
-	maxHistoryInput.id = `${pluginName}_${maxHistoryInput.name}`;
-	maxHistoryInput.type = 'number'
-	maxHistoryInput.setAttribute( 'min', 0 );
-	maxHistoryInput.value = readData( 'maxhistory', 50 );
-	
-	maxHistoryLabel.classList.add( 'h5-18_1nd', 'title-3sZWYQ', 'size12-3R0845', 'height16-2Lv3qA', 'weightSemiBold-NJexzi', 'da-h5', 'da-title', 'da-size12', 'da-height16', 'da-weightSemiBold', 'defaultMarginh5-2mL-bP', 'marginBottom8-AtZOdT', 'da-defaultMarginh5', 'da-marginBottom8' );
-	maxHistoryLabel.setAttribute( 'for', maxHistoryInput.id );
-	maxHistoryLabel.appendChild( document.createTextNode( 'Eicon History Size Limit' ) );
-	
-	hr.classList.add( 'divider-3573oO', 'da-divider', 'marginTop20-3TxNs6', 'da-marginTop20', 'marginBottom20-32qID7', 'da-marginBottom20' );
-	
-	buttonWrapper.style.display = 'flex';
-	buttonWrapper.style.justifyContent = 'space-between';
-	buttonWrapper.appendChild( clearHistoryButton );
-	buttonWrapper.appendChild( saveButton );
-	
-	saveButton.type = 'submit';
-	saveButton.classList.add( 'button-38aScr', 'da-button', 'lookFilled-1Gx00P', 'colorGreen-29iAKY', 'sizeSmall-2cSMqn', 'grow-q77ONN', 'da-grow' );
-	
-	clearHistoryButton.type = 'button';
-	clearHistoryButton.classList.add( 'button-38aScr', 'da-button', 'lookFilled-1Gx00P', 'colorBrand-3pXr91', 'sizeSmall-2cSMqn', 'grow-q77ONN', 'da-grow' );
-	clearHistoryButton.onclick = () => { 
-		writeData( 'history', [] );
-		BdApi.showToast( 'Eicon history has been cleared.', { type: 'success' } );
+	/*
+	 * Reads from the plugin data.
+	 */
+	readData( key, fallback ) {
+		let value = BdApi.loadData( this.getShortName(), key );
+		return typeof value !== 'undefined' ? value : fallback;
 	}
 	
-	saveButtonContents.classList.add( 'contents-18-Yxp', 'da-contents' );
-	saveButtonContents.appendChild( document.createTextNode( 'Save' ) );
-	saveButton.appendChild( saveButtonContents );
-	
-	clearHistoryButtonContents.classList.add( 'contents-18-Yxp', 'da-contents' );
-	clearHistoryButtonContents.appendChild( document.createTextNode( 'Clear eicon history' ) );	
-	clearHistoryButton.appendChild( clearHistoryButtonContents );
-	
-	let form = document.createElement( 'form' );
-	form.style.padding = '20px';
-	form.appendChild( maxHistoryLabel );
-	form.appendChild( maxHistoryInput );
-	form.appendChild( hr );
-	form.appendChild( buttonWrapper );
-	form.onsubmit = () => { 
-		event.preventDefault();
-		writeData( 'maxhistory', document.querySelector( `#${maxHistoryInput.id}` ).value );
-		BdApi.showToast( 'Settings have been successfully saved.', { type: 'success' } );
+	/*
+	 * Gets the data of the eicon with the given name.
+	 */
+	getEiconData( name, callback ) {
+		let request = require( 'request' );
+		request( this.getEiconUrl( name ), ( error, response, body ) => {
+			setTimeout( callback, 0, body );
+		} );
 	}
 	
-	return form;
+	/*
+	 * Gets the data of the default eicon.
+	 */
+	loadDefaultEicon() {
+		if ( 'undefined' === typeof readData( 'default-eicon' ) ) {
+			request( getEiconUrl(), ( error, response, body ) => {
+				if ( 'undefined' !== typeof body ) {
+					writeData( 'default-eicon', body );
+				} else {
+					setTimeout( this.loadDefaultEicon(), 10000 );
+				}
+			} );
+		}
+	}
+	
+	/*
+	 * Checks whether an eicon exists by file contents
+	 */
+	eiconExists( body ) {
+		let standard = this.readData( 'default-eicon' );
+		if ( 'undefined' === typeof standard )
+			return true;
+		return standard !== body;
+	}
+	
+	/*
+	 * Updates the list of eicons that is ised by the QuickEmoteMenu.
+	 */
+	updateEicons() {
+		quickEmoteMenu.eiContainer = this.getEiconContainer();
+		$( '#bda-qem-eicon-container' ).replaceWith( quickEmoteMenu.eiContainer );
+	}
+	
+	/*
+	 * Checks if an eicon is favourited.
+	 */
+	isFavorite( name ) {
+		return this.readData( 'favourites', [] ).indexOf( name ) >= 0;
+	}
+	
+	/*
+	 * Adds an eicon to your favourites.
+	 */
+	favouriteEicon( name ) {
+		let isFav;
+		let favourites = this.readData( 'favourites', [] );
+		let index = favourites.indexOf( name );
+		let buttons = document.querySelectorAll( `[data-eicon="${name}"]` );
+		if ( index < 0 ) {
+			isFav = true;
+			favourites.unshift( name );
+			buttons.forEach( ( element ) => { element.classList.add( 'active' ); } );
+		} else {
+			isFav = false;
+			favourites.splice( index, 1 );
+			buttons.forEach( ( element ) => { element.classList.remove( 'active' ); } );
+		}
+		this.writeData( 'favourites', favourites );			
+		this.updateEicons();
+		return isFav
+	}
+	
+	/*
+	 * Adds an eicon to the eicon history
+	 */
+	addToHistory( eicon ) {
+		let history = this.readData( 'history', [] );
+		let maxLength = this.readData( 'maxhistory', 50 );
+		let index = history.indexOf( eicon );
+		if ( index >= 0 ) {
+			history.unshift( history.splice( index, 1 )[ 0 ] );
+			history.splice( maxLength );
+			this.writeData( 'history', history );
+			this.updateEicons();
+			quickEmoteMenu.switchQem( 'bda-qem-eicon' );
+		} else {
+			this.getEiconData( eicon, ( data ) => {
+				if ( this.eiconExists( data ) ) {
+					history.unshift( eicon );
+					history.splice( maxLength );
+					this.writeData( 'history', history );
+					this.updateEicons();
+					quickEmoteMenu.switchQem( 'bda-qem-eicon' );
+				}
+			} );
+		}
+	}
+	
+	/*
+	 * Tries to insert eicons into the React DOM
+	 */
+	tryInsertEicon( text ) {
+		let elements = [];
+		while ( this.eiconPattern.test( text ) ) {
+			let match = this.eiconPattern.exec( text );
+			let eiconName = match[ 1 ].toLowerCase();
+			let textBefore = text.substring( 0, match.index );
+			let eicon = BdApi.React.createElement( this.EiconReactComponent, { eiconName: eiconName } );
+			if ( textBefore.length ) {
+				elements.push( textBefore );
+			}
+			elements.push( eicon );
+			text = text.substring( match.index + match[ 0 ].length );
+		}
+		
+		if ( text.length ) {
+			elements.push( text );
+		}
+		
+		return elements;
+	}
+	
+	/*
+	 * Displays an enlarged version of the eicon at 100x100 size.
+	 */
+	showEnlarged( elements ) {
+		let target = document.getElementById( 'app-mount' ).lastElementChild;
+		let wrapper = document.createElement( 'div' );
+		wrapper.classList.add( 'eicon-zoom-wrapper' );
+		let close = () => { 
+			wrapper.classList.add( 'eicon-fade-out' );
+			document.removeEventListener( 'click', close );
+			document.removeEventListener( 'keydown', closeByKeystroke );
+			setTimeout( () => { 
+				if ( wrapper !== null ) 
+					wrapper.remove();
+			}, 250 ); 
+		};
+		let closeByKeystroke = ( e ) => { 
+			if ( 'Escape' === event.code ) {
+				close();
+			}
+			e.preventDefault();
+		};
+		wrapper.addEventListener( 'click', close );
+		document.addEventListener( 'keydown', closeByKeystroke );
+		let innerWrapper = document.createElement( 'div' );
+		for ( let element of elements ) {
+			if ( Object.keys( element ).length === 0 ) {
+				wrapper.appendChild( innerWrapper );
+				innerWrapper = document.createElement( 'div' );
+				continue;
+			}
+			let image = document.createElement( 'img' );
+			image.src = element.src;
+			image.alt = element.alt;
+			innerWrapper.appendChild( image );
+		}
+		wrapper.appendChild( innerWrapper );
+		target.appendChild( wrapper );
+	}
+	
+	/*
+	 * Displays a tooltip for an eicon
+	 */
+	showTooltip( element ) {
+		// Create the tooltip element
+		let tooltip = document.createElement( 'div' );
+		tooltip.setAttribute( 'class', 'tooltip-1OS-Ti da-tooltip top-1pTh1F da-top black-2bmmnj da-black' );
+		tooltip.appendChild( document.createTextNode( element.getAttribute( 'alt' ) ) );
+		document.getElementsByClassName( 'da-tooltips' )[ 0 ].appendChild( tooltip );
+		
+		// Set the desired position of the tooltip element after it's added to the DOM
+		let rect = element.getBoundingClientRect();
+		let bottom = window.screen.height - rect.top - tooltip.clientHeight;
+		let left = rect.left / 2 + rect.right / 2 - tooltip.clientWidth / 2;
+		tooltip.style.bottom = `${bottom}px`;
+		tooltip.style.left = `${left}px`;
+	}
+	
+	/*
+	 * Removes any displayed tooltips
+	 */
+	removeTooltip() {
+		document.getElementsByClassName('da-tooltips')[ 0 ].innerHTML = '';
+	}
 }
