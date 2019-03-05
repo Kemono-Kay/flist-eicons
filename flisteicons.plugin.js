@@ -1,10 +1,10 @@
-//META{"name":"flisteicons","version":"1.0.0","website":"https://github.com/Kemono-Kay/flist-eicons","source":"https://raw.githubusercontent.com/Kemono-Kay/flist-eicons/master/flisteicons.plugin.js"}*//
+//META{"name":"flisteicons","version":"1.0.1","website":"https://github.com/Kemono-Kay/flist-eicons","source":"https://raw.githubusercontent.com/Kemono-Kay/flist-eicons/master/flisteicons.plugin.js"}*//
 
 class flisteicons {
 	getName() { return "F-list eicons"; }
 	getShortName() { return "flisteicons"; }
 	getDescription() { return "Allows users to use F-list eicons as emotes."; }
-	getVersion() { return "1.0.0"; }
+	getVersion() { return "1.0.1"; }
 	getAuthor() { return "Kemono-Kay"; }
 	getSettingsPanel() { return this.settingsPanel; }
 	load() {
@@ -45,6 +45,9 @@ class flisteicons {
 	get whitespace() { return /^\s*$/; }
 	get changelog() {
 		return {
+			'1.0.1': [
+				`A critical bug has been fixed where the plugin cannot start.`,
+			],
 			'1.0.0': [
 				`Type eicon names in chat to have them be displayed to other users of this plugin like so: <code>:f!name:</code>`,
 				`This plugin has a settings panel to adjust your preferences, or update the plugin when a new update is available.`,
@@ -592,6 +595,7 @@ class flisteicons {
 			let match = body.match( /\/\/META(.*)\*\/\// );
 			if ( null !== match ) {
 				try {
+					console.log( body );
 					let META = JSON.parse( match[ 1 ] );
 					let newestVersion = META.version.split( '.' );
 					let thisVersion = this.getVersion().split( '.' );
@@ -721,10 +725,11 @@ class flisteicons {
 	 * Gets the data of the default eicon.
 	 */
 	loadDefaultEicon() {
-		if ( 'undefined' === typeof readData( 'default-eicon' ) ) {
-			request( getEiconUrl(), ( error, response, body ) => {
+		let request = require( 'request' );
+		if ( 'undefined' === typeof this.readData( 'default-eicon' ) ) {
+			request( this.getEiconUrl(), ( error, response, body ) => {
 				if ( 'undefined' !== typeof body ) {
-					writeData( 'default-eicon', body );
+					this.writeData( 'default-eicon', body );
 				} else {
 					setTimeout( this.loadDefaultEicon(), 10000 );
 				}
