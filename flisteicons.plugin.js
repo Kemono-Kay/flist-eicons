@@ -20,8 +20,7 @@ class flisteicons {
 	}
 	stop() {
 		this.unpatchAllMethods();
-		emoteModule = new EmoteModule(); emoteModule.init();
-		quickEmoteMenu = new QuickEmoteMenu(); quickEmoteMenu.init();
+		this.restartEmoteModule();
 	}
 	start() {
 		if ( 'undefined' === typeof this.readData( 'default-eicon' ) )
@@ -40,8 +39,9 @@ class flisteicons {
 		this.patchQuickEmoteMenu();
 		BdApi.clearCSS( this.getShortName() );
 		BdApi.injectCSS( this.getShortName(), this.css );
-		emoteModule = new EmoteModule(); emoteModule.init();
-		quickEmoteMenu = new QuickEmoteMenu(); quickEmoteMenu.init();
+		if ( emoteModule.initialized || quickEmoteMenu.initialized )
+			this.restartEmoteModule();
+		
 	}
 	
 	get sourceUrl() { return 'https://raw.githubusercontent.com/Kemono-Kay/flist-eicons/master/flisteicons.plugin.js'; }
@@ -51,9 +51,10 @@ class flisteicons {
 	get changelog() {
 		return {
 			'1.0.3': [
-				`Changed the way eicon mosaics are implemented.`
-				`Undid some of the changes to css for increased compatibility with themes.`,
+				`Changes to css have been made for increased compatibility with other themes and plugins.`,
+				`Clicking on eicons to zoom in zooms out on particularly large mosaics.`,
 				`Eicon mosaics now automatically start on a new line.`,
+				`Eicon mosaics are now large by default.`,
 			],
 			'1.0.2': [
 				`Changelog now displays all changes since you last updated, not only the most recent version.`,
@@ -96,24 +97,22 @@ class flisteicons {
 				position: relative;
 				display: inline-flex;
 				object-fit: contain;
-				height: 1.45em;
-				width: 1.45em;
 				vertical-align: baseline;
 			}
 			
-			.eicon-wrapper.jumboable {
+			.eicon-wrapper.jumboable img.emote {
+				margin: 0;
 				height: 2rem;
-				width: 2rem;
+				width: auto;
 			}
 			
 			.eicon-wrapper input {
 				z-index: 1;
 			}
 			
-			.eicon-wrapper img {
-				position: absolute;
-				height: 100%;
-				width: 100%;
+			.eicon-wrapper img.emote {
+				height: 1.45em;
+				width: auto;
 				cursor: pointer;
 			}
 			
@@ -353,9 +352,23 @@ class flisteicons {
 		let self = this;
 		return class extends BdApi.React.Component {
 			render() {
-				return BdApi.React.createElement( 'div', { 
+				let cols = 0;
+				let rows = 0;
+				let currentCols = 0;
+				for( let child of this.props.children ) {
+					if ( 'br' === child.type ) {
+						rows++;
+						continue;
+					}
+					if ( currentCols++ > cols ) {
+						cols = currentCols;
+					}
+				}
+				return BdApi.React.createElement( 'div', {
 					className: 'eicon-mosaic',
-					onClick: () => { self.showEnlarged( this.props.children ) },
+					onClick: () => {
+						self.showEnlarged( this.props.children, cols, rows )
+					},
 				}, this.props.children );
 			}
 		}
@@ -390,7 +403,7 @@ class flisteicons {
 					e.stopPropagation();
 					this.setState( { isFavorite: self.favouriteEicon( this.props.eiconName ) } );
 				};
-				elements.props.children.props.children[ 0 ].props.className = this.props.jumboable ? 'jumboable' : '';
+				elements.props.children.props.children[ 0 ].props.className = 'emote' + ( this.props.jumboable ? ' jumboable' : '' );
 				if ( !this.props.isMosaic ) elements.props.children.props.children[ 0 ].props.onClick = ( e ) => {
 					self.showEnlarged( [ this ] );
 				};
@@ -611,6 +624,18 @@ class flisteicons {
 			}
 			return callback( false );
 		} );
+	}
+	
+	/*
+	 * Restarts the emote module so that the eicon patches will be executed.
+	 */
+	restartEmoteModule() {
+		emoteModule = new EmoteModule();
+		quickEmoteMenu = new QuickEmoteMenu();
+		window.emotePromise = emoteModule.init().then(() => {
+			emoteModule.initialized = true;
+			quickEmoteMenu.init();
+		});
 	}
 	
 	/*
@@ -860,7 +885,7 @@ class flisteicons {
 	/*
 	 * Displays an enlarged version of the eicon at 100x100 size.
 	 */
-	showEnlarged( elements ) {
+	showEnlarged( elements, width = 1, height = 1 ) {
 		let target = document.getElementById( 'app-mount' ).lastElementChild;
 		let wrapper = document.createElement( 'div' );
 		wrapper.classList.add( 'eicon-zoom-wrapper' );
@@ -892,13 +917,12 @@ class flisteicons {
 				innerWrapper.appendChild( image );
 			}
 		}
-		setTimeout( () => {
-			let rect = innerWrapper.getBoundingClientRect();
-			let wWidth = window.innerWidth * .008;
-			let wHeight = window.innerHeight * .008;
-			let multiplier = Math.min( wWidth / rect.width, wHeight / rect.height, 1 );
-			innerWrapper.style.transform = `scale( ${multiplier}, ${multiplier} )`;
-		} );
+		
+		let wWidth = window.innerWidth * .8;
+		let wHeight = window.innerHeight * .8;
+		let multiplier = Math.min( wWidth / ( width * 100 ), wHeight / ( height * 100 ), 1 );
+		innerWrapper.style.transform = `scale( ${multiplier}, ${multiplier} )`;
+		
 		wrapper.appendChild( innerWrapper );
 		target.appendChild( wrapper );
 	}
