@@ -50,6 +50,11 @@ class flisteicons {
 	get whitespace() { return /^\s*$/; }
 	get changelog() {
 		return {
+			'1.0.3': [
+				`Changed the way eicon mosaics are implemented.`
+				`Undid some of the changes to css for increased compatibility with themes.`,
+				`Eicon mosaics now automatically start on a new line.`,
+			],
 			'1.0.2': [
 				`Changelog now displays all changes since you last updated, not only the most recent version.`,
 				`No extra custom css is needed to style eicons.`,
@@ -75,20 +80,28 @@ class flisteicons {
 			}
 			
 			@keyframes eicon-zoom-img-fade-in {
-				from { width: 0px; height: 0px; }
+				from { width: 1px; height: 1px; }
 				to { width: 100px; height: 100px; }
 			}
 			
-			.emoji.eicon-wrapper {
-				margin: 0;
+			.eicon-mosaic {
+				display:inline;
+				position: relative;
+				text-indent: 0;
+			}
+			
+			.eicon-wrapper {
+				top: 4px;
+				margin: -4px 0 0 0;
 				position: relative;
 				display: inline-flex;
 				object-fit: contain;
 				height: 1.45em;
 				width: 1.45em;
+				vertical-align: baseline;
 			}
 			
-			.emoji.eicon-wrapper.jumboable {
+			.eicon-wrapper.jumboable {
 				height: 2rem;
 				width: 2rem;
 			}
@@ -149,7 +162,6 @@ class flisteicons {
 			}
 			
 			.eicon-changelog-wrapper > div {
-				
 				overflow-y: auto;
 				padding: 1rem;
 				border-radius: .5rem;
@@ -184,7 +196,8 @@ class flisteicons {
 			}
 			
 			.eicon-zoom-wrapper > div {
-				display: flex;
+				white-space: nowrap;
+				line-height: 0;
 			}
 			
 			.eicon-changelog-wrapper.eicon-fade-out,
@@ -205,7 +218,7 @@ class flisteicons {
 			.eicon-zoom-wrapper.eicon-fade-out img {
 				transition: .25s;
 				width: 0px;
-				height: 0px; 
+				height: 0px;
 			}
 			
 			#bda-qem-eicon {
@@ -336,6 +349,18 @@ class flisteicons {
 			}
 			`;
 	}
+	get MosaicReactComponent() {
+		let self = this;
+		return class extends BdApi.React.Component {
+			render() {
+				return BdApi.React.createElement( 'div', { 
+					className: 'eicon-mosaic',
+					onClick: () => { self.showEnlarged( this.props.children ) },
+				}, this.props.children );
+			}
+		}
+	}
+	
 	get EiconReactComponent() {
 		let self = this;
 		return class extends BDEmote {
@@ -345,6 +370,7 @@ class flisteicons {
 				props.url = self.getEiconUrl( name );
 				super( props );
 				this.setState( { isFavorite: self.isFavorite( name ) } );
+				if ( this.props.isMosaic ) this.props.jumboable = true;
 			}
 			onMouseEnter() {
 				if ( !this.state.shouldAnimate && this.animateOnHover ) {
@@ -358,47 +384,15 @@ class flisteicons {
 			}
 			render() {
 				let elements = super.render();
-				elements.props.children.props.className = 'emoji eicon-wrapper' + ( this.props.jumboable ? ' jumboable' : '' );
-				elements.props.children.props.children[ 1 ].props.onClick = () => {
+				elements.props.children.props.className = 'eicon-wrapper' + ( this.props.jumboable ? ' jumboable' : '' );
+				elements.props.children.props.children[ 1 ].props.onClick = ( e ) => {
+					e.preventDefault();
+					e.stopPropagation();
 					this.setState( { isFavorite: self.favouriteEicon( this.props.eiconName ) } );
 				};
-				elements.props.children.props.children[ 0 ].props.className = this.props.jumboable ? ' jumboable' : '';
-				elements.props.children.props.children[ 0 ].props.onClick = ( e ) => {
-					let wrapper = e.currentTarget.parentNode;
-					let elementGroup = [ wrapper ];
-					let addPrev = function( el ) {
-						let prev = el.previousSibling;
-						if ( null !== prev && prev.classList && prev.classList.contains( 'eicon-wrapper' ) ) {
-							elementGroup.unshift( prev );
-						} else if ( null !== prev && document.TEXT_NODE === prev.nodeType && prev.textContent === '\n' ) {
-							elementGroup.unshift({});
-						} else {
-							return;
-						}
-						addPrev( prev );
-					};
-					let addNext = function( el ) {
-						let next = el.nextSibling;
-						if ( null !== next && next.classList && next.classList.contains( 'eicon-wrapper' ) ) {
-							elementGroup.push( next );
-						} else if ( null !== next && document.TEXT_NODE === next.nodeType && next.textContent === '\n' ) {
-							elementGroup.push({});
-						} else {
-							return;
-						}
-						addNext( next );
-					};
-					addPrev( wrapper );
-					addNext( wrapper );
-					for ( let index in elementGroup ) {
-						if ( Object.keys( elementGroup[ index ] ).length === 0 ) {
-							elementGroup[ index ] = {};
-						} else {
-							let img = elementGroup[ index ].firstElementChild;
-							elementGroup[ index ] = { src: img.getAttribute( 'src' ), alt: img.getAttribute( 'alt' ) };
-						}
-					}
-					self.showEnlarged( elementGroup );
+				elements.props.children.props.children[ 0 ].props.className = this.props.jumboable ? 'jumboable' : '';
+				if ( !this.props.isMosaic ) elements.props.children.props.children[ 0 ].props.onClick = ( e ) => {
+					self.showEnlarged( [ this ] );
 				};
 				return elements;
 			}
@@ -467,7 +461,7 @@ class flisteicons {
 		update.value = 'Update';
 		update.disabled = true;
 		let updated = null;
-		setTimeout( () => { 
+		setTimeout( () => {
 			this.checkForUpdate( ( updateAvailable ) => {
 				if ( updateAvailable ) {
 					update.disabled = false;
@@ -519,16 +513,16 @@ class flisteicons {
 			versions = Object.keys( this.changelog );
 		let target = document.getElementById( 'app-mount' ).lastElementChild;
 		let wrapper = document.createElement( 'div' );
-		let close = () => { 
+		let close = () => {
 			wrapper.classList.add( 'eicon-fade-out' );
 			document.removeEventListener( 'click', close );
 			document.removeEventListener( 'keydown', closeByKeystroke );
-			setTimeout( () => { 
-				if ( wrapper !== null ) 
+			setTimeout( () => {
+				if ( wrapper !== null )
 					wrapper.remove();
-			}, 250 ); 
+			}, 250 );
 		};
-		let closeByKeystroke = ( e ) => { 
+		let closeByKeystroke = ( e ) => {
 			if ( 'Escape' === event.code ) {
 				close();
 			}
@@ -625,7 +619,7 @@ class flisteicons {
 	patchRender() {
 		let self = this;
 		self.methods.push( Utils.monkeyPatch( BDV2.MessageContentComponent.prototype, 'render', {
-			after: ( { returnValue, thisObject } ) => {
+			after: ( { thisObject, returnValue } ) => {
 				Utils.monkeyPatch( returnValue.props, "children", { silent: true, once: true, after: ( { returnValue } ) => {
 					const markup = returnValue.props.children[ 1 ];
 					if ( !markup.props.children ) return;
@@ -822,21 +816,43 @@ class flisteicons {
 	 */
 	tryInsertEicon( text ) {
 		let elements = [];
+		let mosaic = false;
+		let mosaicElement;
 		while ( this.eiconPattern.test( text ) ) {
 			let match = this.eiconPattern.exec( text );
 			let eiconName = match[ 1 ].toLowerCase();
 			let textBefore = text.substring( 0, match.index );
-			let eicon = BdApi.React.createElement( this.EiconReactComponent, { eiconName: eiconName } );
-			if ( textBefore.length ) {
-				elements.push( textBefore );
-			}
-			elements.push( eicon );
 			text = text.substring( match.index + match[ 0 ].length );
+			if ( textBefore.length ) {
+				if ( '\n' !== textBefore && mosaic ) {
+					mosaic = false;
+					elements.push( mosaicElement );
+					elements.push( BdApi.React.createElement( 'div', { className: 'eicon-clearfix' } ) );
+				}
+				if ( mosaic ) {
+					mosaicElement.props.children.push( BdApi.React.createElement( 'br' ) );
+				} else {
+					elements.push( textBefore );
+				}
+			}
+			let eicon = BdApi.React.createElement( this.EiconReactComponent, { eiconName: eiconName, isMosaic: mosaic } );
+			if ( !mosaic && this.eiconPattern.test( text ) ) {
+				if ( Number( '\n' === text.slice( 0, 1 ) ) === this.eiconPattern.exec( text ).index ) {
+					mosaic = true;
+					eicon.props.isMosaic = true;
+					elements.push( BdApi.React.createElement( 'div', { className: 'eicon-clearfix' } ) );
+					mosaicElement = BdApi.React.createElement( this.MosaicReactComponent, {}, [] );
+				}
+			}
+			if ( mosaic ) {
+				mosaicElement.props.children.push( eicon );
+			} else {
+				elements.push( eicon );
+			}
 		}
-		
-		if ( text.length ) {
-			elements.push( text );
-		}
+		if ( mosaic ) elements.push( mosaicElement );
+		if ( mosaic && text.length ) elements.push( BdApi.React.createElement( 'div', { className: 'eicon-clearfix' } ) );
+		if ( text.length ) elements.push( text );
 		
 		return elements;
 	}
@@ -848,16 +864,16 @@ class flisteicons {
 		let target = document.getElementById( 'app-mount' ).lastElementChild;
 		let wrapper = document.createElement( 'div' );
 		wrapper.classList.add( 'eicon-zoom-wrapper' );
-		let close = () => { 
+		let close = () => {
 			wrapper.classList.add( 'eicon-fade-out' );
 			document.removeEventListener( 'click', close );
 			document.removeEventListener( 'keydown', closeByKeystroke );
-			setTimeout( () => { 
-				if ( wrapper !== null ) 
+			setTimeout( () => {
+				if ( wrapper !== null )
 					wrapper.remove();
-			}, 250 ); 
+			}, 250 );
 		};
-		let closeByKeystroke = ( e ) => { 
+		let closeByKeystroke = ( e ) => {
 			if ( 'Escape' === event.code ) {
 				close();
 			}
@@ -867,16 +883,22 @@ class flisteicons {
 		document.addEventListener( 'keydown', closeByKeystroke );
 		let innerWrapper = document.createElement( 'div' );
 		for ( let element of elements ) {
-			if ( Object.keys( element ).length === 0 ) {
-				wrapper.appendChild( innerWrapper );
-				innerWrapper = document.createElement( 'div' );
-				continue;
+			if ( 'br' === element.type ) {
+				innerWrapper.appendChild( document.createElement( 'br' ) );
+			} else {
+				let image = document.createElement( 'img' );
+				image.src = element.props.url;
+				image.alt = element.props.name;
+				innerWrapper.appendChild( image );
 			}
-			let image = document.createElement( 'img' );
-			image.src = element.src;
-			image.alt = element.alt;
-			innerWrapper.appendChild( image );
 		}
+		setTimeout( () => {
+			let rect = innerWrapper.getBoundingClientRect();
+			let wWidth = window.innerWidth * .008;
+			let wHeight = window.innerHeight * .008;
+			let multiplier = Math.min( wWidth / rect.width, wHeight / rect.height, 1 );
+			innerWrapper.style.transform = `scale( ${multiplier}, ${multiplier} )`;
+		} );
 		wrapper.appendChild( innerWrapper );
 		target.appendChild( wrapper );
 	}
